@@ -105,7 +105,7 @@
     <div id="ui-layer">
         <h1 id="main-title">Merry Xmas</h1>
         <div id="mode-indicator">INTERACTIVE JAR</div>
-        <div id="touch-hint">SWIPE TO ROTATE &bull; TAP TO SWITCH</div>
+        <div id="touch-hint">Double-click left to list picture and click left to zoom picture. Middle-click to zoom jar.</div>
     </div>
     <div id="start-overlay">
         <div class="start-btn">CHẠM ĐỂ BẮT ĐẦU</div>
@@ -481,6 +481,19 @@
                     }
                 }
             });
+
+            // Scroll wheel/Touchpad scroll để zoom lọ tuyết (ở JAR mode)
+            el.addEventListener('wheel', (e) => {
+                if(!isGalleryMode) {
+                    e.preventDefault();
+                    // Cuộn lên = zoom in, cuộn xuống = zoom out
+                    if(e.deltaY < 0) {
+                        isZoomedIn = true; // Cuộn lên -> zoom in
+                    } else if(e.deltaY > 0) {
+                        isZoomedIn = false; // Cuộn xuống -> zoom out
+                    }
+                }
+            }, { passive: false });
 
             el.addEventListener('mouseleave', () => {
                 isDragging = false;

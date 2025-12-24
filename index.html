@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Merry Xmas Em Yêu (Smart Optimized)</title>
+    <title>Merry Xmas Bé Yêu (Smart Optimized)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Pinyon+Script&display=swap" rel="stylesheet">
@@ -65,14 +65,6 @@
             font-family: 'Pinyon Script', cursive; font-size: 6vw; color: #fff0f5;
             text-shadow: 0 0 5px rgba(255,200,200,0.5); padding: 0 20px; transition: all 0.3s ease;
         }
-
-        #webcam-wrapper {
-            position: absolute; bottom: 20px; left: 20px; width: 100px; height: 75px; z-index: 50;
-            background: #000; border: 1px solid #FFD700; border-radius: 4px;
-            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); overflow: hidden; opacity: 0.6;
-        }
-        #webcam-canvas { width: 100%; height: 100%; transform: scaleX(-1); border-radius: 2px; }
-        #cam-stats { display: none; }
         
         #start-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,5,5,0.9);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:opacity .8s}
         .start-btn {
@@ -95,13 +87,9 @@
             #mode-indicator { font-size: 9px; }
             #secret-message { font-size: 5vw; width: 80%; } 
             #lyrics-text { font-size: 32px; }
-            #webcam-wrapper { width: 150px; height: 112px; opacity: 1; }
-            #cam-stats { display: block; position: absolute; bottom: 0; left: 0; width: 100%; text-align: center; font-family: 'Cinzel', serif; font-size: 6px; font-weight: 700; color: #FFD700; letter-spacing: 2px; text-transform: uppercase; z-index: 26; background: rgba(0,0,0,0.8); padding: 4px 0; border-top: 1px solid #FFD700; }
         }
     </style>
     <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 </head>
 <body>
@@ -112,7 +100,7 @@
     <div id="canvas-container"></div>
     <canvas id="firework-canvas"></canvas>
 
-    <div id="secret-message">MERRY CHRISTMAS EM YÊU</div>
+    <div id="secret-message">MERRY CHRISTMAS BÉ YÊU</div>
 
     <div id="ui-layer">
         <h1 id="main-title">Merry Xmas</h1>
@@ -125,12 +113,6 @@
     </div>
     <div id="lyrics-container"><span id="lyrics-text">...</span></div>
     
-    <div id="webcam-wrapper">
-        <div id="cam-stats">SCAN | AI-LITE</div>
-        <canvas id="webcam-canvas"></canvas>
-    </div>
-
-    <video id="input_video" style="display:none; transform: scaleX(-1)" playsinline></video>
     <audio id="bg-music" src="./audio.mp3" loop></audio>
 
     <script type="module">
@@ -171,14 +153,9 @@
         ];
 
         let scene, camera, renderer, composer, bloomPass, carModel, mixer, particleSystems = {}, textureCache = {}, polaroidTextures = [], polaroidGroup, clock = new THREE.Clock(), bgParticleGroup;
-        let isGalleryMode = false, lastGesture = 'NONE', isZoomedIn = false, lastSwitchTime = 0, lastDropTime = 0, jarOffsetY = 0, inspectedPhoto = null;
+        let isGalleryMode = false, isZoomedIn = false, lastSwitchTime = 0, lastDropTime = 0, jarOffsetY = 0, inspectedPhoto = null;
         const SWITCH_COOLDOWN = 1.0;
-        
-        const STATE = { 
-            hand: { detected: false, x: 0.5, y: 0.5, gesture: 'NONE' }, 
-            targetRotation: { x: 0, y: 0 },
-            currentRotation: { x: 0, y: 0 }
-        };
+        let raycaster, mouse;
         
         let isFireworkMode = false;
         
@@ -338,6 +315,9 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
             camera.position.set(0, 0, SCENE_CONFIG.camZFar);
             
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
             renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" }); 
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
@@ -376,8 +356,7 @@
                 scene.add(carModel);
             });
 
-            initFireworkCanvas(); 
-            initHandTracking();
+            initFireworkCanvas();
             
             window.addEventListener('resize', () => { 
                 camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); 
@@ -391,6 +370,7 @@
         function initTouchControls() {
             const el = document.getElementById('canvas-container');
             
+            // Touch events cho mobile
             el.addEventListener('touchstart', (e) => {
                 if(e.touches.length === 1) {
                     touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; isTouching = true;
@@ -404,10 +384,16 @@
                     const x = e.touches[0].clientX; const y = e.touches[0].clientY;
                     const dx = (x - touchStartX) * 0.005; const dy = (y - touchStartY) * 0.005;
 
-                    if(!isGalleryMode) {
-                        STATE.targetRotation.x += dy; STATE.targetRotation.y += dx;
-                        STATE.currentRotation.x = STATE.targetRotation.x; STATE.currentRotation.y = STATE.targetRotation.y;
-                        if(carModel) { carModel.rotation.y = STATE.currentRotation.y; carModel.rotation.x = STATE.currentRotation.x; }
+                    if(isGalleryMode) {
+                        // Xoay polaroidGroup khi ở gallery mode
+                        if(polaroidGroup && inspectedPhoto === null) {
+                            polaroidGroup.rotation.y += dx;
+                            polaroidGroup.rotation.x += dy;
+                        }
+                    } else if(carModel) {
+                        // Xoay jar khi ở jar mode
+                        carModel.rotation.y += dx;
+                        carModel.rotation.x += dy;
                     }
                     touchStartX = x; touchStartY = y;
                 }
@@ -423,25 +409,116 @@
             let longPressTimer;
             el.addEventListener('touchstart', () => { longPressTimer = setTimeout(() => { if(isGalleryMode) triggerFireworkMode(); }, 1500); });
             el.addEventListener('touchend', () => clearTimeout(longPressTimer));
+
+            // Mouse events cho desktop
+            let isDragging = false;
+            let mouseLastClick = 0;
+            
+            el.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                touchStartX = e.clientX;
+                touchStartY = e.clientY;
+                isTouching = true;
+                e.preventDefault();
+            });
+
+            el.addEventListener('mousemove', (e) => {
+                if(!isDragging || isFireworkMode) return;
+                
+                const x = e.clientX;
+                const y = e.clientY;
+                const dx = (x - touchStartX) * 0.005;
+                const dy = (y - touchStartY) * 0.005;
+
+                if(isGalleryMode) {
+                    // Xoay polaroidGroup khi ở gallery mode
+                    if(polaroidGroup && inspectedPhoto === null) {
+                        polaroidGroup.rotation.y += dx;
+                        polaroidGroup.rotation.x += dy;
+                    }
+                } else if(carModel) {
+                    // Xoay jar khi ở jar mode
+                    carModel.rotation.y += dx;
+                    carModel.rotation.x += dy;
+                }
+                
+                touchStartX = x;
+                touchStartY = y;
+            });
+
+            el.addEventListener('mouseup', (e) => {
+                // Chỉ xử lý click nếu không kéo nhiều
+                const moveDistance = Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY);
+                
+                if(moveDistance < 5 && isGalleryMode) {
+                    // Click vào ảnh để zoom
+                    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(polaroidGroup.children, false);
+                    
+                    if(intersects.length > 0 && inspectedPhoto === null) {
+                        // Click vào ảnh -> zoom in
+                        const clickedPhoto = intersects[0].object;
+                        animatePhotoPopup(true, clickedPhoto);
+                    } else if(intersects.length === 0 && inspectedPhoto !== null) {
+                        // Click ra ngoài khoảng trống -> zoom out
+                        animatePhotoPopup(false);
+                    }
+                }
+                
+                isDragging = false;
+                isTouching = false;
+            });
+
+            // Middle mouse click để zoom lọ tuyết (ở JAR mode)
+            el.addEventListener('mousedown', (e) => {
+                if(e.button === 1) { // Middle mouse button
+                    e.preventDefault();
+                    if(!isGalleryMode) {
+                        isZoomedIn = !isZoomedIn;
+                    }
+                }
+            });
+
+            el.addEventListener('mouseleave', () => {
+                isDragging = false;
+                isTouching = false;
+            });
+
+            // Double click để toggle mode
+            el.addEventListener('dblclick', () => {
+                toggleMode();
+            });
+
+            // Right click để trigger firework (khi ở gallery mode)
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if(isGalleryMode) triggerFireworkMode();
+            });
         }
 
         function loadPolaroidTextures() {
-            const imgLoader = new THREE.ImageLoader(); imgLoader.crossOrigin = 'anonymous'; 
+            const loader = new THREE.TextureLoader();
             const cacheBuster = Date.now();
             for (let i = 1; i <= TOTAL_PHOTOS; i++) {
-                const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 300; const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#fdfdfd'; ctx.fillRect(0, 0, 256, 300); ctx.fillStyle = '#eee'; ctx.fillRect(15, 15, 226, 226);
-                const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; polaroidTextures.push(texture);
                 const path = `./images/${i}.jpg?v=${cacheBuster}`;
-                imgLoader.load(path, (image) => {
-                    ctx.fillStyle = '#fdfdfd'; ctx.fillRect(0, 0, 256, 300); ctx.drawImage(image, 15, 15, 226, 226);
-                    ctx.fillStyle = '#111'; ctx.font = '24px Pinyon Script'; ctx.textAlign = 'center'; ctx.fillText(`Moment ${i}`, 128, 275);
-                    texture.needsUpdate = true;
-                }, undefined, () => {
-                    ctx.fillStyle = '#fdfdfd'; ctx.fillRect(0, 0, 256, 300); ctx.fillStyle = '#ffeebb'; ctx.fillRect(15, 15, 226, 226);
-                    ctx.fillStyle = '#800000'; ctx.font = 'bold 20px Cinzel'; ctx.textAlign = 'center'; ctx.fillText('NO IMAGE', 128, 120);
-                    texture.needsUpdate = true;
-                });
+                const texture = loader.load(
+                    path,
+                    (tex) => { 
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        // Lưu aspect ratio của ảnh
+                        const img = tex.image;
+                        if (img) {
+                            tex.userData.aspectRatio = img.width / img.height;
+                        }
+                    },
+                    undefined,
+                    (err) => { console.log('Error loading image:', i); }
+                );
+                texture.colorSpace = THREE.SRGBColorSpace;
+                polaroidTextures.push(texture);
             }
         }
 
@@ -475,11 +552,25 @@
         }
 
         function createPolaroids() {
-            polaroidGroup = new THREE.Group(); const geometry = new THREE.PlaneGeometry(0.7, 0.9); 
+            polaroidGroup = new THREE.Group(); 
+            
             const count = TOTAL_PHOTOS; const cols = 5; const radiusBase = 4.0; 
             for (let i = 0; i < count; i++) {
+                // Tạo geometry theo tỉ lệ ảnh thực (mặc định 3:4 portrait)
+                const baseHeight = 1.0;
+                let aspectRatio = 0.75; // Mặc định 3:4
+                
+                // Nếu texture đã load xong, dùng aspect ratio thực
+                if (polaroidTextures[i] && polaroidTextures[i].image) {
+                    aspectRatio = polaroidTextures[i].image.width / polaroidTextures[i].image.height;
+                }
+                
+                const width = baseHeight * aspectRatio;
+                const geometry = new THREE.PlaneGeometry(width, baseHeight);
+                
                 const material = new THREE.MeshBasicMaterial({ map: polaroidTextures[i], side: THREE.DoubleSide, transparent: true, opacity: 0 });
                 const polaroid = new THREE.Mesh(geometry, material);
+                
                 const row = Math.floor(i / cols); const col = i % cols; const yBase = -1.5 + (row * 1.25); const angleStep = (Math.PI * 2 * 0.8) / cols; 
                 const angleOffset = (row % 2 === 0) ? 0 : (angleStep / 2); const theta = -2.5 + (col * angleStep) + angleOffset; 
                 const x = radiusBase * Math.cos(theta); const z = radiusBase * Math.sin(theta); const targetRotY = Math.atan2(x, z) + Math.PI;
@@ -559,7 +650,6 @@
                     const off = p.userData.floatOffset; p.position.y = p.userData.targetPos.y + Math.sin(time * 0.8 + off) * 0.15; p.rotation.z = p.userData.targetRot.z + Math.sin(time * 0.7 + off) * 0.08;
                 }
             });
-            if (isGalleryMode && inspectedPhoto === null) { polaroidGroup.rotation.y = carModel.rotation.y; polaroidGroup.rotation.x = carModel.rotation.x; }
         }
 
         function getClosestPolaroid() {
@@ -570,13 +660,29 @@
             }); return closest;
         }
 
-        function animatePhotoPopup(show) {
+        function animatePhotoPopup(show, photo = null) {
             const now = clock.getElapsedTime();
             if (show) {
-                if (inspectedPhoto || now - lastDropTime < 0.8) return; inspectedPhoto = getClosestPolaroid(); if (!inspectedPhoto) return;
-                scene.attach(inspectedPhoto); inspectedPhoto.visible = true; inspectedPhoto.material.opacity = 1;
-                gsap.to(inspectedPhoto.position, { x: 0, y: 0, z: camera.position.z - 2.5, duration: 0.8, ease: "back.out(1.2)" });
-                gsap.to(inspectedPhoto.rotation, { x: 0, y: 0, z: 0, duration: 0.8 }); gsap.to(inspectedPhoto.scale, { x: 1.4, y: 1.4, z: 1.4, duration: 0.8 }); 
+                if (inspectedPhoto || now - lastDropTime < 0.8) return; 
+                inspectedPhoto = photo || getClosestPolaroid(); 
+                if (!inspectedPhoto) return;
+                scene.attach(inspectedPhoto); 
+                inspectedPhoto.visible = true; 
+                inspectedPhoto.material.opacity = 1;
+                
+                // Zoom vừa phải giống code mẫu - giữ nguyên kích thước, không full màn hình
+                gsap.to(inspectedPhoto.position, { 
+                    x: 0, y: 0, z: 4.5, // Đưa ra phía trước
+                    duration: 0.8, ease: "back.out(1.2)" 
+                });
+                gsap.to(inspectedPhoto.rotation, { 
+                    x: 0, y: 0, z: 0, 
+                    duration: 0.8 
+                }); 
+                gsap.to(inspectedPhoto.scale, { 
+                    x: 2.5, y: 2.5, z: 2.5, // Scale vừa phải
+                    duration: 0.8, ease: "back.out(1.2)" 
+                });
             } else {
                 if (!inspectedPhoto) return; const p = inspectedPhoto; inspectedPhoto = null; lastDropTime = now; 
                 polaroidGroup.attach(p); const t = isGalleryMode ? p.userData.targetPos : p.userData.startPos; const r = p.userData.targetRot;
@@ -585,49 +691,7 @@
             }
         }
 
-        function initHandTracking() {
-            const video = document.getElementById('input_video'); const canvas = document.getElementById('webcam-canvas'); const ctx = canvas.getContext('2d'); const stats = document.getElementById('cam-stats');
-            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            
-            hands.setOptions({
-                maxNumHands: 1, 
-                modelComplexity: 0, 
-                minDetectionConfidence: 0.5, 
-                minTrackingConfidence: 0.5
-            }); 
-            
-            hands.onResults(results => {
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                ctx.save(); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-                STATE.hand.gesture = 'NONE';
-                if (results.multiHandLandmarks.length > 0) {
-                    STATE.hand.detected = true; const lm = results.multiHandLandmarks[0]; STATE.hand.x = 1 - lm[0].x; STATE.hand.y = lm[0].y; 
-                    const tips = [8, 12, 16, 20]; const pips = [6, 10, 14, 18]; let extended = [];
-                    for(let i=0; i<4; i++) extended.push(Math.hypot(lm[tips[i]].x - lm[0].x, lm[tips[i]].y - lm[0].y) > Math.hypot(lm[pips[i]].x - lm[0].x, lm[pips[i]].y - lm[0].y));
-                    const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-                    const isFist = extended.every(e => e === false);
 
-                    if (extended[0] && extended[1] && !extended[2] && !extended[3]) STATE.hand.gesture = 'VICTORY';
-                    else if (isFist) STATE.hand.gesture = 'FIST';
-                    else if (pinchDist < 0.05) STATE.hand.gesture = 'PINCH'; 
-                    else STATE.hand.gesture = 'OPEN';
-                } else { if(STATE.hand.detected) { STATE.hand.detected = false; STATE.hand.gesture = 'NONE'; } }
-                ctx.restore();
-            });
-
-            let frameCounter = 0;
-            const cameraUtils = new Camera(video, { 
-                onFrame: async () => { 
-                    if (frameCounter % AI_SKIP_FRAMES === 0) {
-                        await hands.send({image: video}); 
-                    }
-                    frameCounter++;
-                }, 
-                width: 320, 
-                height: 240 
-            }); 
-            cameraUtils.start();
-        }
 
         function animate() {
             requestAnimationFrame(animate); 
@@ -637,42 +701,10 @@
             if (mixer) mixer.update(dt);
             updateLyrics(); updateParticles(time); updatePolaroids(time); updateBackgroundParticles(time, dt);
             
-            const currentGesture = STATE.hand.gesture;
-
-            if (currentGesture === 'VICTORY' && lastGesture !== 'VICTORY') toggleMode();
-            if (currentGesture === 'PINCH') { isZoomedIn = true; if (isGalleryMode) animatePhotoPopup(true); }
-            if (currentGesture === 'OPEN') { 
-                isZoomedIn = false; 
-                if (isGalleryMode) animatePhotoPopup(false); 
-                if (isFireworkMode) exitFireworkMode(); 
-            }
-            if (currentGesture === 'FIST' && isGalleryMode && !isFireworkMode) { triggerFireworkMode(); }
-
-            lastGesture = currentGesture;
-
-            if (isTouching) {
-                
-            } else if (STATE.hand.detected) {
-                const targetY = (STATE.hand.x - 0.5) * (Math.PI * 6.0); 
-                const targetX = (STATE.hand.y - 0.5) * (Math.PI * 1.0); 
-                
-                STATE.currentRotation.x += (targetX - STATE.currentRotation.x) * 0.1;
-                STATE.currentRotation.y += (targetY - STATE.currentRotation.y) * 0.1;
-
-                if (inspectedPhoto === null) {
-                     if (!isGalleryMode) { 
-                        if(carModel) { carModel.rotation.y = STATE.currentRotation.y; carModel.rotation.x = STATE.currentRotation.x; }
-                     } 
-                     else if(carModel) { 
-                        carModel.rotation.y = STATE.currentRotation.y * 0.5; 
-                        carModel.rotation.x = STATE.currentRotation.x * 0.5; 
-                     }
-                }
-            } else if(carModel && !isGalleryMode && inspectedPhoto === null) { 
+            // Auto rotation khi không touch
+            if(!isTouching && carModel && !isGalleryMode && inspectedPhoto === null) { 
                 carModel.rotation.y += 0.4 * dt; 
                 carModel.rotation.x *= 0.95; 
-                STATE.currentRotation.y = carModel.rotation.y;
-                STATE.currentRotation.x = carModel.rotation.x;
             }
 
             if (!isGalleryMode) {
